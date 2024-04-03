@@ -127,7 +127,7 @@ class _OrtodonciaScreenState extends State<OrtodonciaScreen> {
                           const Padding(
                             padding: EdgeInsets.all(8.0),
                             child: Text(
-                              "Datos de la Cit",
+                              "Datos de la Cita",
                               style: kTextBlack,
                             ),
                           ),
