@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:smile_tech/constants/constants.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 class CirugiaScreen extends StatefulWidget {
   const CirugiaScreen({super.key});
 
@@ -8,8 +10,74 @@ class CirugiaScreen extends StatefulWidget {
 }
 
 class _CirugiaScreenState extends State<CirugiaScreen> {
+  List<Map<String, String>> pacientesCirugia = [];
+  List<Map<String, String>> busquedaPacientes = [];
+  String nombrePaciente = '';
+  String hora = '';
+  String comentario = '';
+  final TextEditingController _horaController = TextEditingController();
+  final TextEditingController _nombreController = TextEditingController();
+  final TextEditingController _comentarioController = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
-  bool isVisible = false;
+
+  String variable = "";
+  bool isVisibleUpdate = false;
+  bool isVisibleForm = false;
+  bool isVisibleCuadro = false;
+  bool terminarBusqueda =false;
+
+  String insertLineBreaks(String comment, int wordLimit) {
+    var words = comment.split(' ');
+    String newComment = '';
+    for (int i = 0; i < words.length; i++) {
+      newComment += words[i];
+      if ((i + 1) % wordLimit == 0 && i != words.length - 1) {
+        newComment += '\n';
+      } else if (i != words.length - 1) {
+        newComment += ' ';
+      }
+    }
+    return newComment;
+  }
+
+  //SharedPreferences
+  final Future<SharedPreferences> _prefs = SharedPreferences.getInstance();
+//guardaDatosBD y actualizarBD
+  Future<void> persistPacientesListCirugia() async {
+    final SharedPreferences prefs = await _prefs;
+    String encodedData = json.encode(pacientesCirugia);
+    await prefs.setString('pacientesCirugia', encodedData);
+  }
+
+// Método añadido para cargar la lista de pacientes
+  Future<void> loadPacientesListCirugia() async {
+    final SharedPreferences prefs = await _prefs;
+    String? encodedData = prefs.getString('pacientesCirugia');
+    if (encodedData != null) {
+      List<dynamic> decodedData = json.decode(encodedData);
+      setState(() {
+        List<Map<String, String>> pacientesSaved = List<Map<String, String>>.from(decodedData.map((e) => Map<String, String>.from(e)));
+        pacientesCirugia = pacientesSaved;
+        isVisibleCuadro = true;
+      });
+    }
+  }
+
+  //eliminarPacienteDatosBD
+  Future<void> removePacienteCirugia(String nombre) async {
+    final SharedPreferences prefs = await _prefs;
+    pacientesCirugia.removeWhere((paciente) => paciente['nombre'] == nombre);
+    await persistPacientesListCirugia();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await loadPacientesListCirugia();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -68,37 +136,60 @@ class _CirugiaScreenState extends State<CirugiaScreen> {
                 ),
                 //Buscador de personas
                 Container(
-                  width: 120,
+                  width: 130,
                   height: 30,
                   margin: const EdgeInsets.symmetric(vertical: 8),
                   child: TextField(
+                    controller: _searchController,
                     decoration: InputDecoration(
                       hintText: "Buscar...",
                       fillColor: Colors.white,
                       filled: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                          vertical: 0,
-                          horizontal: 10), // Reduce el padding interno
+                      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 10),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(20),
                         borderSide: BorderSide.none,
                       ),
-                      suffixIcon: Padding(
-                        padding: const EdgeInsets.only(
-                          bottom: 100,
-                        ),
-                        child: Material(
-                          elevation: 15,
-                          child: IconButton(
-                            icon: const Icon(Icons.search, size: 20),
-                            onPressed: () {},
-                          ),
-                        ),
+                      suffixIcon: IconButton(
+                        icon:  Icon(!terminarBusqueda?Icons.search:Icons.delete_forever, size: 15),
+                        onPressed: () {
+                          if(!terminarBusqueda){
+                            terminarBusqueda= true;
+                            print("Botón de búsqueda presionado");
+                            String nombreABuscar = _searchController.text;
+                            int indiceDelPaciente = -1;
+
+                            for (int i = 0; i < pacientesCirugia.length; i++) {
+                              Map<String, String> pacienteActual = pacientesCirugia[i];
+                              if (pacienteActual["nombre"]!.toLowerCase().contains(nombreABuscar.toLowerCase())) {
+                                setState(() {
+                                  busquedaPacientes.add(pacienteActual);
+                                });
+                                indiceDelPaciente = i;
+                              }
+                            }
+
+                            if (indiceDelPaciente != -1) {
+                              print("Paciente encontrado en el índ  ice: $indiceDelPaciente");
+                            } else {
+                              print("Paciente no encontrado");
+                            }
+                          }else{
+
+                            setState(() {
+                              terminarBusqueda = false;
+                              busquedaPacientes.clear();
+                              _searchController.clear();
+                            });
+                          }
+
+                        },
                       ),
                     ),
                     style: const TextStyle(fontSize: 14),
                   ),
                 ),
+
               ],
             ),
           ),
@@ -106,12 +197,13 @@ class _CirugiaScreenState extends State<CirugiaScreen> {
       ),
       body: Center(
         child: SingleChildScrollView(
-          child: Column(
+          child: Stack(
             children: [
-              Text(" Pantalla de Cirugía", style:kTextWhite.copyWith(fontSize: 30),
-              ),
+              /*Text("Pantalla de Cirugía", style:kTextWhite.copyWith(fontSize: 30),
+              ),*/
+              //FormUpdate
               Visibility(
-                visible: isVisible,
+                visible: isVisibleUpdate,
                 child: Padding(
                   padding: const EdgeInsets.only(top: 50, bottom: 200),
                   child: Material(
@@ -120,27 +212,29 @@ class _CirugiaScreenState extends State<CirugiaScreen> {
                     elevation: 15,
                     child: SizedBox(
                       width: 390,
-                      height: 400,
+                      height: 600,
                       child: Column(
                         children: [
                           const Padding(
                             padding: EdgeInsets.all(8.0),
                             child: Text(
-                              "Datos de la Cita",
+                              "Datos del paciente",
                               style: kTextBlack,
                             ),
                           ),
-                          const Padding(
-                            padding: EdgeInsets.all(8.0),
+                          //nombre paciente
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
                             child: TextField(
+                              controller: _nombreController,
                               textAlign: TextAlign.center,
                               style: kTextBlack,
                               //controller:
-                              decoration: InputDecoration(
+                              decoration: const InputDecoration(
                                 contentPadding: EdgeInsets.symmetric(
                                     vertical: 13.0, horizontal: 10.0),
-                                hintText: "Ingrese la hora cita",
-                                labelText: "Hora",
+                                hintText: "Ingrese el nombre del paciente",
+                                labelText: "Nombre",
                                 labelStyle: kTextBlue2,
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.all(
@@ -166,17 +260,20 @@ class _CirugiaScreenState extends State<CirugiaScreen> {
                               ),
                             ),
                           ),
-                          const Padding(
-                            padding: EdgeInsets.all(8.0),
+                          //hora
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
                             child: TextField(
+                              controller: _horaController,
                               textAlign: TextAlign.center,
                               style: kTextBlack,
                               //controller:
-                              decoration: InputDecoration(
+                              decoration: const InputDecoration(
                                 contentPadding: EdgeInsets.symmetric(
                                     vertical: 13.0, horizontal: 10.0),
-                                hintText: "Ingrese el nombre del paciente",
-                                labelText: "Nombre",
+                                hintText:
+                                "Ingrese la hora de la cita",
+                                labelText: "Hora",
                                 labelStyle: kTextBlue2,
                                 //hintStyle: kSubTextBlack,
                                 border: OutlineInputBorder(
@@ -203,13 +300,16 @@ class _CirugiaScreenState extends State<CirugiaScreen> {
                               ),
                             ),
                           ),
-                          const Padding(
-                            padding: EdgeInsets.all(8.0),
+                          //comentario
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
                             child: TextField(
+                              maxLines: 10,
+                              controller: _comentarioController,
                               textAlign: TextAlign.center,
                               style: kTextBlack,
                               //controller:
-                              decoration: InputDecoration(
+                              decoration: const InputDecoration(
                                 contentPadding: EdgeInsets.symmetric(
                                     vertical: 13.0, horizontal: 10.0),
                                 hintText: "Ingrese el comentario",
@@ -244,7 +344,7 @@ class _CirugiaScreenState extends State<CirugiaScreen> {
                             children: [
                               Padding(
                                 padding:
-                                const EdgeInsets.only(left: 50, top: 15),
+                                const EdgeInsets.only(left: 30, top: 15),
                                 child: ElevatedButton(
                                     style: ButtonStyle(
                                       backgroundColor:
@@ -259,15 +359,43 @@ class _CirugiaScreenState extends State<CirugiaScreen> {
                                                 color: kBackground2),
                                           )),
                                     ),
-                                    onPressed: () {},
+                                    onPressed: () async {
+                                      setState(() {
+                                        int datosPersona = 0;
+                                        Map<String, String> actualizarPaciente = {
+                                          'nombre': _nombreController.text,
+
+                                          'horaCita':
+                                          _horaController.text,
+                                          'comentario':
+                                          _comentarioController.text,
+
+                                        };
+                                        for(Map pacientesData in pacientesCirugia){
+                                          if(pacientesData["nombre"]==variable){
+                                            break;
+                                          }else{
+                                            datosPersona++;
+                                          }
+                                        }
+                                        pacientesCirugia[datosPersona]=actualizarPaciente;
+                                        _nombreController.clear();
+                                        _horaController.clear();
+                                        _comentarioController.clear();
+
+                                        isVisibleUpdate =! isVisibleUpdate;
+
+                                      });
+                                      await persistPacientesListCirugia();
+                                    },
                                     child: const Text(
-                                      "Agregar cita",
+                                      "Actualizar paciente",
                                       style: kTextBlack,
                                     )),
                               ),
                               Padding(
                                 padding:
-                                const EdgeInsets.only(left: 50, top: 15),
+                                const EdgeInsets.only(left: 30, top: 15),
                                 child: ElevatedButton(
                                     style: ButtonStyle(
                                       backgroundColor:
@@ -283,17 +411,507 @@ class _CirugiaScreenState extends State<CirugiaScreen> {
                                           )),
                                     ),
                                     onPressed: () {
+                                      isVisibleCuadro=!isVisibleCuadro;
                                       setState(() {
-                                        isVisible = !isVisible;
+                                        _nombreController.clear();
+                                        _horaController.clear();
+                                        _comentarioController.clear();
+
+                                        isVisibleUpdate = !isVisibleUpdate;
                                       });
                                     },
-                                    child: const Text("Cerrar", style: kTextBlack)),
+                                    child: const Text("Cerrar",
+                                        style: kTextBlack)),
                               ),
                             ],
                           ),
                         ],
                       ),
                     ),
+                  ),
+                ),
+              ),
+              //MainForm
+              Visibility(
+                visible: isVisibleForm,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 50, bottom: 200),
+                  child: Material(
+                    borderRadius: BorderRadius.circular(15),
+                    color: kWhite,
+                    elevation: 15,
+                    child: SizedBox(
+                      width: 390,
+                      height: 600,
+                      child: Column(
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.all(8.0),
+                            child: Text(
+                              "Datos de la cita",
+                              style: kTextBlack,
+                            ),
+                          ),
+                          //nombre
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: TextField(
+                              controller: _nombreController,
+                              textAlign: TextAlign.center,
+                              style: kTextBlack,
+                              //controller:
+                              decoration: const InputDecoration(
+                                contentPadding: EdgeInsets.symmetric(
+                                    vertical: 13.0, horizontal: 10.0),
+                                hintText: "Ingrese el nombre del paciente",
+                                labelText: "Nombre",
+                                labelStyle: kTextBlue2,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.all(
+                                    Radius.circular(15),
+                                  ),
+                                  borderSide: BorderSide(
+                                      color: kBackground2, width: 2.0),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(
+                                      color: kBackground2, width: 2.0),
+                                  borderRadius: BorderRadius.all(
+                                    Radius.circular(15),
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(
+                                      color: kBackground2, width: 2.0),
+                                  borderRadius: BorderRadius.all(
+                                    Radius.circular(15),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          //hora
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: TextField(
+                              controller: _horaController,
+                              textAlign: TextAlign.center,
+                              style: kTextBlack,
+                              //controller:
+                              decoration: const InputDecoration(
+                                contentPadding: EdgeInsets.symmetric(
+                                    vertical: 13.0, horizontal: 10.0),
+                                hintText:
+                                "Ingrese la hora de la cita",
+                                labelText: "Hora",
+                                labelStyle: kTextBlue2,
+                                //hintStyle: kSubTextBlack,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.all(
+                                    Radius.circular(15),
+                                  ),
+                                  borderSide: BorderSide(
+                                      color: kBackground2, width: 2.0),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(
+                                      color: kBackground2, width: 2.0),
+                                  borderRadius: BorderRadius.all(
+                                    Radius.circular(15),
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(
+                                      color: kBackground2, width: 2.0),
+                                  borderRadius: BorderRadius.all(
+                                    Radius.circular(15),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          //Comentario
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: TextField(
+                              maxLines: 10,
+                              controller: _comentarioController,
+                              textAlign: TextAlign.center,
+                              style: kTextBlack,
+                              //controller:
+                              decoration: const InputDecoration(
+                                contentPadding: EdgeInsets.symmetric(
+                                    vertical: 13.0, horizontal: 10.0),
+                                hintText: "Ingrese un comentario",
+                                labelText: "Comentario",
+                                labelStyle: kTextBlue2,
+                                //hintStyle: kSubTextBlack,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.all(
+                                    Radius.circular(15),
+                                  ),
+                                  borderSide: BorderSide(
+                                      color: kBackground2, width: 2.0),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(
+                                      color: kBackground2, width: 2.0),
+                                  borderRadius: BorderRadius.all(
+                                    Radius.circular(15),
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(
+                                      color: kBackground2, width: 2.0),
+                                  borderRadius: BorderRadius.all(
+                                    Radius.circular(15),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              Padding(
+                                padding:
+                                const EdgeInsets.only(left: 30, top: 15),
+                                child: ElevatedButton(
+                                    style: ButtonStyle(
+                                      backgroundColor:
+                                      MaterialStateProperty.all(kButton),
+                                      elevation: MaterialStateProperty.all(15),
+                                      shape: MaterialStateProperty.all<
+                                          RoundedRectangleBorder>(
+                                          RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                                30), // Radio del borde
+                                            side: const BorderSide(
+                                                color: kBackground2),
+                                          )),
+                                    ),
+                                    onPressed: () async {
+                                      setState(() {
+                                        Map<String, String> nuevaCita = {
+                                          'nombre': _nombreController.text,
+                                          'horaCita':
+                                          _horaController.text,
+                                          'comentario':
+                                          _comentarioController.text,
+                                        };
+                                        pacientesCirugia.add(nuevaCita);
+                                        _nombreController.clear();
+                                        _horaController.clear();
+                                        _comentarioController.clear();
+                                        isVisibleCuadro=!isVisibleCuadro;
+
+                                        isVisibleCuadro = true;
+                                        isVisibleForm = !isVisibleForm;
+                                      });
+                                      await persistPacientesListCirugia();
+                                    },
+                                    child: const Text(
+                                      "Agregar paciente",
+                                      style: kTextBlack,
+                                    )),
+                              ),
+                              Padding(
+                                padding:
+                                const EdgeInsets.only(left: 30, top: 15),
+                                child: ElevatedButton(
+                                    style: ButtonStyle(
+                                      backgroundColor:
+                                      MaterialStateProperty.all(kButton),
+                                      elevation: MaterialStateProperty.all(15),
+                                      shape: MaterialStateProperty.all<
+                                          RoundedRectangleBorder>(
+                                          RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                                30), // Radio del borde
+                                            side: const BorderSide(
+                                                color: kBackground2),
+                                          )),
+                                    ),
+                                    onPressed: () {
+
+                                      setState(() {
+                                        isVisibleForm = !isVisibleForm;
+                                        isVisibleCuadro=!isVisibleCuadro;
+                                      });
+                                    },
+                                    child: const Text("Cerrar",
+                                        style: kTextBlack)),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              //Cuadros
+              Visibility(
+
+                visible: isVisibleCuadro,
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: busquedaPacientes.isEmpty?pacientesCirugia.asMap().entries.map((entry) {
+                      int index = entry.key;
+                      Map<String, String> citas = entry.value;
+                      return Container(
+                        constraints: const BoxConstraints(
+                          minHeight: 150.0,
+                        ),
+                        margin: const EdgeInsets.all(10.0),
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: kBackground2,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    " Nombre: ${citas['nombre']}",
+                                    style: const TextStyle(
+                                      color: kBlack,
+                                      fontSize: 15,
+                                      fontFamily: "Viga",
+                                    ),
+
+                                  ),
+                                  Text(
+                                    " La hora: ${citas['horaCita']}",
+                                    style: const TextStyle(
+                                      color: kBlack,
+                                      fontSize: 15,
+                                      fontFamily: "Viga",
+                                    ),
+                                  ),
+                                  Text(
+                                    " Comentario: ${insertLineBreaks(citas['comentario'] ?? '', 10)}",
+                                    style: const TextStyle(
+                                      color: kBlack,
+                                      fontSize: 15,
+                                      fontFamily: "Viga",
+                                    ),
+                                    maxLines: 10,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Spacer(),
+                            Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 20),
+                                  child: ElevatedButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        isVisibleCuadro=!isVisibleCuadro;
+                                        isVisibleUpdate = true;
+                                        _nombreController.text = citas['nombre'] ?? '';
+                                        variable =  citas['nombre'] ?? '';
+                                        _horaController.text = citas['hora'] ??'';
+                                        _comentarioController.text = citas['comentario'] ?? '';
+                                      });
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: kButton,
+                                    ),
+                                    child: const Text('Actualizar',
+                                        style: TextStyle(
+                                          color: kBlack,
+                                          fontSize: 15,
+                                          fontFamily: "Viga",
+                                        )),
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 20),
+                                  child: ElevatedButton(
+                                    onPressed: () {
+                                      showDialog(
+                                        context: context,
+                                        builder: (BuildContext context) {
+                                          return AlertDialog(
+                                            title: const Text('Confirmar'),
+                                            content: const Text(
+                                                '¿Estás seguro de que quieres eliminar este paciente?'),
+                                            actions: <Widget>[
+                                              TextButton(
+                                                child: const Text('Cancelar'),
+                                                onPressed: () {
+                                                  Navigator.of(context).pop();
+                                                },
+                                              ),
+                                              TextButton(
+                                                child: const Text('Eliminar'),
+                                                onPressed: () async {
+                                                  setState(() {
+                                                    pacientesCirugia.removeAt(index);
+                                                  });
+                                                  Navigator.of(context).pop();
+                                                  await removePacienteCirugia("nombre");
+                                                },
+                                              ),
+                                            ],
+                                          );
+                                        },
+                                      );
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: kButton,
+                                    ),
+                                    child: const Text('Eliminar',
+                                        style: TextStyle(
+                                          color: kBlack,
+                                          fontSize: 15,
+                                          fontFamily: "Viga",
+                                        )),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList():busquedaPacientes.asMap().entries.map((entry) {
+                      int index = entry.key;
+                      Map<String, String> citas = entry.value;
+                      return Container(
+                        constraints: const BoxConstraints(
+                          minHeight: 150.0,
+                        ),
+                        margin: const EdgeInsets.all(10.0),
+
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: kBackground2,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  "  \n  Nombre: ${citas['nombre']}",
+                                  style: const TextStyle(
+                                    color: kBlack,
+                                    fontSize: 15,
+                                    fontFamily: "Viga",
+                                  ),
+                                ),
+                                Text(
+                                  "  La hora: ${citas['horaCita']}",
+                                  style: const TextStyle(
+                                    color: kBlack,
+                                    fontSize: 15,
+                                    fontFamily: "Viga",
+                                  ),
+                                ),
+                                Text(
+                                  "  Comentario: ${insertLineBreaks(citas['comentario'] ?? '', 10)}",
+                                  style: const TextStyle(
+                                    color: kBlack,
+                                    fontSize: 15,
+                                    fontFamily: "Viga",
+                                  ),
+                                  maxLines: 10,
+                                ),
+                              ],
+                            ),
+                            const Spacer(),
+                            Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 25),
+                                  child: ElevatedButton(
+                                    onPressed: () {
+                                      isVisibleCuadro=!isVisibleCuadro;
+                                      setState(() {
+                                        isVisibleUpdate = true;
+
+                                        _nombreController.text =
+                                            citas['nombre'] ?? '';
+                                        variable =  citas['nombre'] ?? '';
+                                        _horaController.text =
+                                            citas["horaCita"] ?? '';
+                                        _comentarioController.text =
+                                            citas['comentario'] ?? '';
+                                      });
+
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: kButton,
+                                    ),
+                                    child: const Text('Actualizar',
+                                        style: TextStyle(
+                                          color: kBlack,
+                                          fontSize: 15,
+                                          fontFamily: "Viga",
+                                        )),
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 25),
+                                  child: ElevatedButton(
+                                    onPressed: () {
+                                      showDialog(
+                                        context: context,
+                                        builder: (BuildContext context) {
+                                          return AlertDialog(
+                                            title: const Text('Confirmar'),
+                                            content: const Text(
+                                                '¿Estás seguro de que quieres eliminar este paciente?'),
+                                            actions: <Widget>[
+                                              TextButton(
+                                                child: const Text('Cancelar'),
+                                                onPressed: () {
+                                                  Navigator.of(context).pop();
+                                                },
+                                              ),
+                                              TextButton(
+                                                child: const Text('Eliminar'),
+                                                onPressed: () {
+                                                  setState(() {
+                                                    pacientesCirugia.removeAt(index);
+                                                  });
+                                                  Navigator.of(context).pop();
+                                                },
+                                              ),
+                                            ],
+                                          );
+                                        },
+                                      );
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: kButton,
+                                    ),
+                                    child: const Text('Eliminar',
+                                        style: TextStyle(
+                                          color: kBlack,
+                                          fontSize: 15,
+                                          fontFamily: "Viga",
+                                        )),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
                   ),
                 ),
               ),
@@ -305,7 +923,8 @@ class _CirugiaScreenState extends State<CirugiaScreen> {
           backgroundColor: kButton,
           onPressed: () {
             setState(() {
-              isVisible = !isVisible;
+              isVisibleForm = !isVisibleForm;
+              isVisibleCuadro=!isVisibleCuadro;
             });
           },
           child: const Icon(Icons.person_add)),

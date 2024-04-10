@@ -1,8 +1,8 @@
-import 'dart:convert';
 
-import 'package:flutter/cupertino.dart';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:smile_tech/constants/constants.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -40,7 +40,44 @@ class _MainScreenState extends State<MainScreen> {
   bool isVisibleForm = false;
   bool isVisibleCuadro = false;
   bool terminarBusqueda =false;
+  //SharedPreferences
+  final Future<SharedPreferences> _prefs = SharedPreferences.getInstance();
 
+
+//guardaDatosBD y actualizarBD
+  Future<void> persistPacientesList() async {
+    final SharedPreferences prefs = await _prefs;
+    String encodedData = json.encode(pacientes);
+    await prefs.setString('pacientes', encodedData);
+  }
+
+// Método añadido para cargar la lista de pacientes
+  Future<void> loadPacientesList() async {
+    final SharedPreferences prefs = await _prefs;
+    String? encodedData = prefs.getString('pacientes');
+    if (encodedData != null) {
+      List<dynamic> decodedData = json.decode(encodedData);
+      setState(() {
+        List<Map<String, String>> pacientesSaved = List<Map<String, String>>.from(decodedData.map((e) => Map<String, String>.from(e)));
+        pacientes = pacientesSaved;
+        isVisibleCuadro = true;
+      });
+    }
+  }
+
+  //eliminarPacienteDatosBD
+  Future<void> removePaciente(String nombre) async {
+    final SharedPreferences prefs = await _prefs;
+    pacientes.removeWhere((paciente) => paciente['nombre'] == nombre);
+    await persistPacientesList();
+  }
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await loadPacientesList();
+    });
+  }
 
 
   @override
@@ -162,7 +199,7 @@ class _MainScreenState extends State<MainScreen> {
       ),
       body: Center(
         child: SingleChildScrollView(
-          child: Column(
+          child: Stack(
             children: [
               //FormUpdate
               Visibility(
@@ -471,8 +508,8 @@ class _MainScreenState extends State<MainScreen> {
                                             color: kBackground2),
                                       )),
                                     ),
-                                    onPressed: () {
-                                      setState(() {
+                                    onPressed: () async {
+                                      setState(()  {
                                         int datosPersona = 0;
                                         Map<String, String> actualizarPaciente = {
                                           'nombre': _nombreController.text,
@@ -508,10 +545,13 @@ class _MainScreenState extends State<MainScreen> {
                                         _correoElectronicoController.clear();
                                         _comentarioController.clear();
 
+                                        isVisibleCuadro =! isVisibleCuadro;
+
 
                                         isVisibleUpdate =! isVisibleUpdate;
 
                                       });
+                                      await persistPacientesList();
                                     },
                                     child: const Text(
                                       "Actualizar paciente",
@@ -544,6 +584,7 @@ class _MainScreenState extends State<MainScreen> {
                                         _tratamientoRealizadoController.clear();
                                         _correoElectronicoController.clear();
                                         _comentarioController.clear();
+                                        isVisibleCuadro=!isVisibleCuadro;
 
                                         isVisibleUpdate = !isVisibleUpdate;
                                       });
@@ -866,7 +907,7 @@ class _MainScreenState extends State<MainScreen> {
                                             color: kBackground2),
                                       )),
                                     ),
-                                    onPressed: () {
+                                    onPressed: () async {
                                       setState(() {
                                         Map<String, String> nuevoPaciente = {
                                           'nombre': _nombreController.text,
@@ -886,7 +927,6 @@ class _MainScreenState extends State<MainScreen> {
                                               _comentarioController.text,
                                         };
                                         pacientes.add(nuevoPaciente);
-
                                         _nombreController.clear();
                                         _numeroCelularController.clear();
                                         _padecimientosController.clear();
@@ -898,6 +938,7 @@ class _MainScreenState extends State<MainScreen> {
                                         isVisibleCuadro = true;
                                         isVisibleForm = !isVisibleForm;
                                       });
+                                      await persistPacientesList();
                                     },
                                     child: const Text(
                                       "Agregar paciente",
@@ -923,6 +964,7 @@ class _MainScreenState extends State<MainScreen> {
                                     ),
                                     onPressed: () {
                                       setState(() {
+                                        isVisibleCuadro =! isVisibleCuadro;
                                         isVisibleForm = !isVisibleForm;
                                       });
                                     },
@@ -939,7 +981,6 @@ class _MainScreenState extends State<MainScreen> {
               ),
               //Cuadros
               Visibility(
-
                 visible: isVisibleCuadro,
                 child: SingleChildScrollView(
                   child: Column(
@@ -1027,6 +1068,7 @@ class _MainScreenState extends State<MainScreen> {
                                   padding: const EdgeInsets.only(right: 25),
                                   child: ElevatedButton(
                                     onPressed: () {
+                                      isVisibleCuadro = ! isVisibleCuadro;
                                       setState(() {
                                         isVisibleUpdate = true;
 
@@ -1081,11 +1123,16 @@ class _MainScreenState extends State<MainScreen> {
                                               ),
                                               TextButton(
                                                 child: const Text('Eliminar'),
-                                                onPressed: () {
-                                                  setState(() {
+                                                onPressed: () async {
+                                                  removePaciente("nombre");
+
+                                                  setState(()  {
+
                                                     pacientes.removeAt(index);
+
                                                   });
                                                   Navigator.of(context).pop();
+                                                  await removePaciente("nombre");
                                                 },
                                               ),
                                             ],
@@ -1247,6 +1294,7 @@ class _MainScreenState extends State<MainScreen> {
                                               TextButton(
                                                 child: const Text('Eliminar'),
                                                 onPressed: () {
+                                                  isVisibleCuadro =! isVisibleCuadro;
                                                   setState(() {
                                                     pacientes.removeAt(index);
                                                   });
@@ -1286,6 +1334,7 @@ class _MainScreenState extends State<MainScreen> {
           backgroundColor: kButton,
           onPressed: () {
             setState(() {
+              isVisibleCuadro =! isVisibleCuadro;
               isVisibleForm = !isVisibleForm;
             });
           },
